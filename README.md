@@ -1,6 +1,6 @@
 # A CI pipeline for \[Stageˣ\]
 
-> This is not the upstream project, nor a fork, it is a CI repository used to build AMD64+ARM64 multiplatform images in GitHub Actions
+> This is not the upstream project, nor a fork, it is a CI repository used to build AMD64+ARM64+RISC-V64 multiplatform images in GitHub Actions
 
 [git://codeberg.org:stagex/stagex](https://codeberg.org/stagex/stagex) | [matrix://#stagex:matrix.org](https://matrix.to/#/#stagex:matrix.org) | [ircs://irc.oftc.net:6697#stagex](https://webchat.oftc.net/?channels=stagex&uio=MT11bmRlZmluZWQmMTE9MTk14d)
 
@@ -8,8 +8,9 @@
 
 This repository wraps the upstream [StageX](https://codeberg.org/stagex/stagex)
 build: it checks out the upstream tree, applies a small set of siderolabs
-patches and builds the bootstrap stages and core packages for `linux/amd64` and
-`linux/arm64`, pushing the intermediate results to a container registry.
+patches and builds the bootstrap stages and core packages for `linux/amd64`,
+`linux/arm64` and `linux/riscv64`, pushing the intermediate results to a
+container registry.
 
 All of the build logic lives in the [`Makefile`](Makefile). The
 [GitHub Actions workflow](.github/workflows/ci.yaml) only calls into it, so the
@@ -31,7 +32,7 @@ Or step by step:
 make clone      # clone upstream StageX at STAGEX_REF into _out/stagex
 make patch      # apply the siderolabs patches
 make fetch      # pre-fetch source tarballs
-make bootstrap  # build the bootstrap stages (stage0..stage3, amd64)
+make bootstrap  # build stage0..2 on amd64, then stage3 for all platforms
 make core       # build the core packages in dependency order
 ```
 
@@ -46,7 +47,7 @@ Useful variables (override on the command line or via the environment):
 | ------------------- | ------------------------- | ----------------------------------------------- |
 | `STAGEX_REF`        | pinned in the `Makefile`  | upstream ref (tag/branch/sha) to build          |
 | `REGISTRY_USERNAME` | `127.0.0.1:5000/stagex`   | registry url/namespace to push to               |
-| `PLATFORM`          | `linux/amd64,linux/arm64` | platforms to build (bootstrap stages are amd64) |
+| `PLATFORM`          | `linux/amd64,linux/arm64,linux/riscv64` | platforms to build (stage0–2 and Rust stay amd64) |
 | `BUILDER`           | `docker buildx`           | build backend                                   |
 
 Builds push to a registry (`push=true`), so a local build needs a writable
@@ -57,6 +58,11 @@ docker run -d -p 5000:5000 --name registry registry:2
 docker buildx create --name stagex --driver docker-container --driver-opt network=host --bootstrap --use
 make all REGISTRY_USERNAME=127.0.0.1:5000/stagex
 ```
+
+CI also requires a native RISC-V64 BuildKit service at
+`tcp://buildkit-riscv64.ci.svc.cluster.local:1234`. Stage3 and Go use the AMD64
+cross-builder; target-native steps in stage3 require ARM64/RISC-V64 emulation
+on that worker. Declaring Buildx platforms does not install emulation.
 
 ### Patches
 

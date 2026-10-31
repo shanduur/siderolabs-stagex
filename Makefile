@@ -1,7 +1,7 @@
 # This repository is a CI wrapper around upstream StageX: it checks out the
 # upstream tree, applies a small set of siderolabs patches and builds the
-# bootstrap + core packages for linux/amd64 and linux/arm64, pushing the
-# intermediate results to a container registry.
+# bootstrap + core packages for linux/amd64, linux/arm64 and linux/riscv64,
+# pushing intermediate results to a container registry.
 #
 # All build settings live here so they are defined once and shared between
 # local runs and the GitHub Actions workflow (which only calls into this
@@ -24,16 +24,15 @@ FETCH_CACHE_IMAGE ?= ghcr.io/siderolabs/stagex/fetch-cache:$(STAGEX_REF)
 # Build settings, overridable from the environment / CI. Keep these free of
 # inline comments: trailing characters would leak into image refs and flags.
 REGISTRY_USERNAME ?= 127.0.0.1:5005/stagex
-PLATFORM          ?= linux/amd64,linux/arm64
+PLATFORM          ?= linux/amd64,linux/arm64,linux/riscv64
 PROGRESS          ?= auto
 BUILDER           ?= docker buildx
 
-# stage3 and go bootstrap from an i386 base and cross-compile to the target, so
-# their arm64 output must be built on an amd64 node (native i386 bootstrap) and
-# not emulated on the arm64 node: go's i386 Go bootstrap crashes under qemu
-# (go1.4 predates arm64) and stage3's i386 cross steps are very slow emulated.
-# CI sets this to a dedicated amd64-only buildx builder; empty locally (uses the
-# default BUILDER, single node).
+# stage3 and go bootstrap from an i386 base and cross-compile to the target.
+# Build them on an amd64 node for native i386 execution; stage3 also executes
+# target binaries, so this node needs arm64/riscv64 emulation. Go's i386 seed
+# predates arm64 and crashes when run through qemu on an arm64 node.
+# CI selects a dedicated amd64 builder; empty locally uses BUILDER.
 CROSS_BUILDER_NAME ?=
 
 # Patches applied to the upstream tree, in order. The stage3 fix is an
@@ -44,7 +43,7 @@ PATCHES := \
 	tag.patch \
 	ttl.sh.patch
 
-# Bootstrap stages (seed the toolchain, amd64-only).
+# Bootstrap seeds remain amd64-only; stage3 produces the selected platforms.
 BOOTSTRAP := stage0 stage1 stage2 stage3
 
 # Core packages in topological (dependency) order. Each registry-* build pulls
@@ -94,18 +93,18 @@ core: $(CORE) ## Build the core packages in dependency order
 
 # Bootstrap seed stages are amd64-only; they build the cross/native toolchain
 # that later (multi-arch) stages depend on.
-stage0 stage1 stage2: PLATFORM := linux/amd64
+stage0 stage1 stage2: override PLATFORM := linux/amd64
 
 # rust bootstraps from mrustc, which only works on amd64 (mrustc 0.12.0 can't
 # compile Rust core for aarch64). Build rust and its exclusive deps amd64-only;
 # this rustc is the bootstrap seed for the arm64-hosted rustc that is cross-built
 # on amd64 in siderolabs/tools.
-ca-certificates curl libatomic-stub llvm-libgcc llvm21 rust: PLATFORM := linux/amd64
+ca-certificates curl libatomic-stub llvm-libgcc llvm21 rust: override PLATFORM := linux/amd64
 
 # Route the i386-bootstrap cross-compiled packages to the amd64 builder (see
 # CROSS_BUILDER_NAME above). Only takes effect when CROSS_BUILDER_NAME is set.
 ifneq ($(strip $(CROSS_BUILDER_NAME)),)
-stage3 go: BUILDER := $(BUILDER) --builder $(CROSS_BUILDER_NAME)
+stage3 go: override BUILDER := $(BUILDER) --builder $(CROSS_BUILDER_NAME)
 endif
 
 .PHONY: $(BOOTSTRAP)

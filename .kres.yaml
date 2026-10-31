@@ -32,13 +32,19 @@ spec:
       # Makefile and overridden here only when the workflow is dispatched with
       # an explicit ref.
       steps:
+        # Kres' crossBuilder appends the native arm64 node to the normal
+        # Buildx builder. Add the native riscv64 node to that same builder.
+        # This endpoint must be provided by CI infrastructure.
+        - name: Add native riscv64 Buildx node
+          nonMakeStep: true
+          command: docker buildx create --append --name "${{ steps.setup-buildx.outputs.name }}" --platform linux/riscv64 tcp://buildkit-riscv64.ci.svc.cluster.local:1234
         # stage3 and go bootstrap from an i386 base and cross-compile; their
-        # arm64 output must build on the amd64 node (native i386 bootstrap), not
-        # emulated on the arm64 node. This dedicated amd64-only builder is
-        # selected for those targets via CROSS_BUILDER_NAME in the Makefile.
+        # arm64 and riscv64 output must build on the amd64 node (native i386
+        # bootstrap), not on the arm64 or riscv64 nodes. This dedicated
+        # amd64-only builder is selected via CROSS_BUILDER_NAME in the Makefile.
         - name: Set up amd64 cross-compile builder
           nonMakeStep: true
-          command: docker buildx create --name stagex-amd64 --driver remote --platform linux/amd64,linux/arm64 tcp://buildkit-amd64.ci.svc.cluster.local:1234
+          command: docker buildx create --name stagex-amd64 --driver remote --platform linux/amd64,linux/arm64,linux/riscv64 tcp://buildkit-amd64.ci.svc.cluster.local:1234
         - name: Clone stagex
           command: clone
           environment:
